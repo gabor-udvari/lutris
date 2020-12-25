@@ -5,9 +5,12 @@ import os
 import time
 from gettext import gettext as _
 from urllib.parse import parse_qsl, urlencode, urlparse
+from xml.etree import ElementTree
+from fnmatch import fnmatch
 
 # Lutris Modules
 from lutris import api, pga, settings
+from lutris.cache import get_cache_path
 from lutris.gui.dialogs import WebConnectDialog
 from lutris.services import AuthenticationError, UnavailableGame
 from lutris.services.base import OnlineService
@@ -316,6 +319,37 @@ def get_gog_download_links(gogid, runner):
             download_links.append({"url": download_info[field], "filename": download_info[field + "_filename"]})
     return download_links
 
+def get_gog_installer_from_cache(slug, gogid, runner):
+    cache_path = get_cache_path()
+    subfolders = ['gog', '']
+    for subfolder in subfolders:
+      installer_path = os.path.join(cache_path, slug, subfolder)
+      if not os.path.isdir(installer_path):
+        continue
+      logger.info(installer_path)
+      for installer_file in os.listdir(installer_path):
+          if (
+            ( runner == 'dosbox' and fnmatch(installer_file, 'setup_*.exe.xml') )
+            or ( runner == 'wine' and fnmatch(installer_file, 'setup_*.exe.xml') )
+            or ( runner == 'linux' and fnmatch(installer_file, '*.sh.xml') )
+            ):
+              tree = ElementTree.parse(os.path.join(installer_path, installer_file))
+              root_attribs = tree.getroot().attrib
+              file_id = root_attribs['name']
+              installer = os.path.join(installer_path, file_id)
+              if os.path.isfile(installer):
+                  md5sum_xml = root_attribs['md5']
+                  md5sum_file = system.get_md5_hash(installer)
+                  if md5sum_xml == md5sum_file:
+                      return [{"url": "", "filename": installer}]
+                  else:
+                      raise UnavailableGame("The cached hash does not match the cached file")
+              else:
+                  logger.exception("The installer file cannot be found in the cache: %s", file_id)
+                  raise UnavailableGame
+
+    logger.exception("No GOG XML found in cache path: %s", installer_path)
+    raise UnavailableGame
 
 class GOGSyncer:
 

@@ -20,7 +20,7 @@ from lutris.runners import (
     InvalidRunner, NonInstallableRunnerError, RunnerInstallationError, import_runner, steam, wine, winesteam
 )
 from lutris.services import UnavailableGame
-from lutris.services.gog import MultipleInstallerError, get_gog_download_links
+from lutris.services.gog import MultipleInstallerError, get_gog_download_links, get_gog_installer_from_cache
 from lutris.services.humblebundle import get_humble_download_link
 from lutris.util import system
 from lutris.util.display import DISPLAY_MANAGER
@@ -296,12 +296,20 @@ class ScriptInterpreter(CommandsMixin):
         """Replace user provided file with downloads from GOG"""
         if not self.gogid:
             raise UnavailableGame("The installer has no GOG ID!")
+
+        links = []
         try:
-            links = get_gog_download_links(self.gogid, self.runner)
-        except HTTPError:
-            raise UnavailableGame("Couldn't load the download links for this game")
-        except MultipleInstallerError:
-            raise UnavailableGame("Don't know how to deal with multiple installers yet.")
+            links = get_gog_installer_from_cache(self.game_slug, self.gogid, self.runner)
+        except UnavailableGame:
+            logger.info("Could not find the installer in the cache")
+
+        if not links:
+            try:
+                links = get_gog_download_links(self.gogid, self.runner)
+            except HTTPError:
+                raise UnavailableGame("Couldn't load the download links for this game")
+            except MultipleInstallerError:
+                raise UnavailableGame("Don't know how to deal with multiple installers yet.")
         if not links:
             raise UnavailableGame("Could not fing GOG game")
 
